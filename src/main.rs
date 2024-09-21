@@ -1,4 +1,4 @@
-use clap::{App, Arg};
+use clap::Parser;
 use rpi_led_matrix::{LedFont, LedMatrix, LedColor, LedMatrixOptions, LedRuntimeOptions};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -10,6 +10,13 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
 use tracing_subscriber::fmt::format::FmtSpan;
 
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about=None)]
+struct Args {
+    #[arg(short, long, value_name="FILE", default_value="config.yaml")]
+    config: String,
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Config {
@@ -79,21 +86,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     debug!("omg debug info");
 
     // parse args
-    let matches = App::New("DC Metro Display")
-        .arg(
-            Arg::with_name("config")
-                .short('c')
-                .long("config")
-                .value_name("FILE")
-                .help("specify config yaml path")
-                .takes_value(true)
-        )
-        .get_matches();
-    
+    let args = Args::parse();
     
     // load config
-    let config_path = matches.value_of("config").unwrap_or("config.yaml");
-    let config = load_config(config_path)?;
+    let config = load_config(&args.config)?;
+
+    println!("API key: {}", config.apikey);
 
     test_led_display();
 
