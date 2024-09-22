@@ -1,6 +1,9 @@
 use clap::Parser;
 use rpi_led_matrix::{LedFont, LedMatrix, LedColor, LedMatrixOptions, LedRuntimeOptions};
+use reqwest;
+use reqwest::header::{HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
+use std::error::Error;
 use std::fs;
 use std::path::Path;
 use std::thread;
@@ -28,7 +31,7 @@ fn test_led_display() {
     matrix_options.set_hardware_mapping("adafruit-hat");
     matrix_options.set_rows(32);
     matrix_options.set_chain_length(4);
-    matrix_options.set_pwm_bits(3);
+    let _ = matrix_options.set_pwm_bits(3);
     matrix_options.set_pwm_lsb_nanoseconds(300);
 
     let mut runtime_options = LedRuntimeOptions::new();
@@ -49,13 +52,40 @@ fn test_led_display() {
     }
 }
 
-fn load_config(path: &str) -> Result<Config, Box<dyn std::error::Error>> {
+fn load_config(path: &str) -> Result<Config, Box<dyn Error>> {
     let config_str = fs::read_to_string(path)?;
     let config: Config = serde_yaml::from_str(&config_str)?;
     Ok(config)
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+// utility function to get a json response from the wmata api
+async fn get_json(apikey: &str, url: &str) -> Result<serde_json::Value, Box<dyn Error>> {
+    let mut headers = HeaderMap::new();
+    headers.insert("api_key", HeaderValue::from_str(apikey)?);
+    headers.insert("Accept", HeaderValue::from_static("application/json"));
+
+    let client = reqwest::Client::new();
+    let resp = client.get(url)
+        .headers(headers)
+        .send()
+        .await?;
+
+    debug!("Response status: {}", resp.status());
+
+    let json = resp.json().await?;
+    Ok(json)
+}
+
+// pull the latest info on the metro lines and parse
+async fn get_metro_lines(apikey: &str) -> Result<(), Box<dyn Error>> {
+    let json = get_json(apikey, "https://api.wmata.com/Rail.svc/json/jLines").await?;
+
+    println!("{}", serde_json::to_string_pretty(&json)?);
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
     // set up logging:
     //  - log to file + stdout
     //  - json format
@@ -83,7 +113,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("test 1 2 3");
     warn!("omg warning");
     error!("errror!!!!");
-    debug!("omg debug info");
 
     // parse args
     let args = Args::parse();
@@ -91,7 +120,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // load config
     let config = load_config(&args.config)?;
 
-    println!("API key: {}", config.apikey);
+    get_metro_lines(&config.apikey).await?;
 
     test_led_display();
 
